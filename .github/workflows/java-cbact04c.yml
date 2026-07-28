@@ -1,0 +1,38 @@
+name: Java CBACT04C
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build and test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+          cache: maven
+
+      - name: Build and run tests
+        run: mvn -B verify
+        working-directory: java/cbact04c
+
+      - name: Run the end-to-end demo against app/data/ASCII
+        run: ./scripts/run-java-demo.sh
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-jdk${{ matrix.java }}
+          path: java/cbact04c/target/surefire-reports/
+          if-no-files-found: ignore

@@ -8,6 +8,10 @@ width records as the COBOL, so it can be pointed straight at the sample datasets
 A plain-English description of what the program does, and of the business rules it
 implements, is in [`../../CBACT04C-EXPLAINED.md`](../../CBACT04C-EXPLAINED.md).
 
+If you have nothing installed yet, follow [`../../RUN-LOCALLY.md`](../../RUN-LOCALLY.md),
+which covers installing JDK 17 and Maven on macOS and running the whole demo with
+`./scripts/run-java-demo.sh`.
+
 ## Build and test
 
 ```bash
