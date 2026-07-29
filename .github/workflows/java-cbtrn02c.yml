@@ -1,0 +1,80 @@
+name: Java CBTRN02C
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build and test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+          cache: maven
+
+      # java/ is a reactor: cbtrn02c reuses cbact04c's fixed-width record layer, so both
+      # modules are built together.
+      - name: Build and run tests
+        run: mvn -B verify
+        working-directory: java
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cbtrn02c-surefire-reports-jdk${{ matrix.java }}
+          path: java/*/target/surefire-reports/
+          if-no-files-found: ignore
+
+  parity:
+    name: CBTRN02C COBOL/Java differential test
+    # Pinned to 22.04: its gnucobol3 package is built with a BDB indexed-file handler,
+    # which the VSAM KSDS inputs need. The gnucobol4 package has it disabled.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: maven
+
+      - name: Install GnuCOBOL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnucobol3
+          cobc --version | head -1
+          cobc --info | grep -i "indexed file handler"
+
+      - name: Build the Java port
+        run: mvn -B -q package -DskipTests
+        working-directory: java
+
+      - name: Run the real COBOL and diff it against the Java
+        run: ./scripts/cobol-parity/run-posting-parity.sh
+
+      - name: Build the static run report
+        run: |
+          python3 scripts/report/build-posting-report.py \
+            target/cbtrn02c-parity/shipped target/cbtrn02c-report/index.html
+
+      - name: Upload parity artifacts and the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cbtrn02c-parity-output
+          path: |
+            target/cbtrn02c-parity/
+            target/cbtrn02c-report/
+          if-no-files-found: ignore

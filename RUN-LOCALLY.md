@@ -281,3 +281,42 @@ Run `chmod +x scripts/run-java-demo.sh` once, or invoke it as `bash scripts/run-
 That is the port faithfully reproducing the COBOL's error handling: an account, cross
 reference, or `DEFAULT` rate row referenced by your input data is missing. Check that all
 four input files come from the same data set.
+
+---
+
+## The nightly posting job (CBTRN02C), in one command
+
+`CBACT04C` is the interest calculator. The other program modernised in this repo is
+`CBTRN02C`, the job that posts the previous day's card transactions overnight — see
+[`CBTRN02C-EXPLAINED.md`](CBTRN02C-EXPLAINED.md).
+
+From a clean machine:
+
+```bash
+./scripts/run-cbtrn02c.sh
+```
+
+It installs what is missing (JDK 17, Maven, GnuCOBOL 3 — with `sudo apt-get` on
+Debian/Ubuntu; on macOS run `brew install openjdk@17 maven gnu-cobol` first and pass
+`--skip-install`), builds the Java port, runs its unit tests, compiles the **real COBOL** and
+diffs it against the Java byte for byte, and writes a static HTML page of the run. The script
+prints a `file://` URL at the end; open it in any browser — no server, no build step, one
+self-contained file:
+
+```
+target/cbtrn02c-report/index.html
+```
+
+The page shows the daily feed that went in, each transaction posted or rejected with its
+reason code, the balance movement on every account, and the totals. The figures come from the
+files the COBOL actually wrote.
+
+Individual pieces, if you want them separately:
+
+| Command | What it does |
+| --- | --- |
+| `(cd java && mvn -B test)` | the unit tests for both ports |
+| `./scripts/cobol-parity/run-posting-parity.sh` | COBOL vs Java, shipped data and adversarial edge cases |
+| `python3 scripts/report/build-posting-report.py target/cbtrn02c-parity/shipped out.html` | rebuild the report from an existing run |
+
+Both are also run on every pull request by the `Java CBTRN02C` GitHub Actions workflow.
