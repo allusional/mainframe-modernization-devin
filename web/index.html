@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardDemo CBACT04C - interest calculation</title>
+<style>
+  :root {
+    --bg: #0f1720;
+    --panel: #17222e;
+    --border: #24323f;
+    --text: #e8eef4;
+    --muted: #93a4b3;
+    --accent: #5bb8ff;
+    --positive: #63d68a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 28px 64px;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  h2 { margin: 36px 0 12px; font-size: 18px; font-weight: 600; }
+  p { margin: 0 0 10px; color: var(--muted); max-width: 78ch; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); }
+  a { color: var(--accent); }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px 26px;
+    align-items: flex-end;
+    margin: 22px 0 6px;
+    padding: 16px 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .control { display: flex; flex-direction: column; gap: 6px; }
+  .control label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .control input[type=text] {
+    width: 160px;
+    padding: 8px 10px;
+    background: #101a24;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 14px;
+  }
+  .control.checkbox { flex-direction: row; align-items: center; gap: 8px; }
+  .control.checkbox label { text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--text); }
+
+  .cards { display: flex; flex-wrap: wrap; gap: 14px; margin: 20px 0 4px; }
+  .card {
+    flex: 1 1 170px;
+    padding: 14px 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .card .value { font-size: 22px; font-variant-numeric: tabular-nums; }
+  .card .label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-top: 4px; }
+
+  table { border-collapse: collapse; width: 100%; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  caption { text-align: left; color: var(--muted); padding-bottom: 8px; }
+  th, td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  th {
+    position: sticky; top: 0;
+    background: var(--panel);
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  }
+  td.num, th.num { text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  tbody tr:hover { background: #1b2733; }
+  tfoot td { font-weight: 600; border-top: 2px solid var(--border); }
+  .interest { color: var(--positive); }
+  .tag {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    border: 1px solid var(--border); background: #101a24;
+    font-size: 12px; color: var(--muted);
+  }
+  .error {
+    padding: 14px 16px; border-radius: 10px;
+    background: #3a1c1c; border: 1px solid #5d2b2b; color: #ffd7d7;
+  }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>CardDemo &mdash; monthly interest calculation</h1>
+<p>
+  This page runs the same logic as the batch program <code>CBACT04C</code> (the mainframe
+  <code>INTCALC</code> job) over the sample datasets in <code>app/data/ASCII</code>, entirely in your
+  browser. No server, no framework, no build step. For each account it looks up the interest rate for
+  the account's disclosure group and spending category, charges one month of interest
+  (<code>balance &times; annual rate &divide; 1200</code>, truncated to cents), adds it to the balance and
+  closes the billing cycle.
+</p>
+
+<div class="controls">
+  <div class="control">
+    <label for="demo-balance">Category balance to charge</label>
+    <input type="text" id="demo-balance" value="10000.00" inputmode="decimal">
+  </div>
+  <div class="control checkbox">
+    <input type="checkbox" id="use-shipped">
+    <label for="use-shipped">Use the shipped balances instead (they are all 0.00)</label>
+  </div>
+</div>
+<p id="data-note"></p>
+
+<div id="output"></div>
+
+<footer>
+  Data: <code>app/data/ASCII</code> (copybooks CVTRA01Y, CVACT01Y, CVACT03Y, CVTRA02Y), embedded by
+  <code>scripts/build-web-data.sh</code>. Logic mirrors <code>app/cbl/CBACT04C.cbl</code> and its Java
+  port in <code>java/cbact04c</code>; see <code>CBACT04C-EXPLAINED.md</code> for the business rules.
+</footer>
+
+<script src="data.js"></script>
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// COBOL display (zoned decimal) numerics: n digits where, for signed fields, the last
+// character carries the sign as an overpunch ({=+0..I=+9, }=-0..R=-9). Values are kept as
+// BigInt cents so nothing is lost to floating point.
+// ---------------------------------------------------------------------------
+const POSITIVE_OVERPUNCH = "{ABCDEFGHI";
+const NEGATIVE_OVERPUNCH = "}JKLMNOPQR";
+
+function parseSignedCents(field) {
+  const digits = field.trim();
+  if (digits === "") return 0n;
+  const last = digits[digits.length - 1];
+  let body = digits.slice(0, -1);
+  let negative = false;
+  const positiveIndex = POSITIVE_OVERPUNCH.indexOf(last);
+  const negativeIndex = NEGATIVE_OVERPUNCH.indexOf(last);
+  if (positiveIndex >= 0) {
+    body += String(positiveIndex);
+  } else if (negativeIndex >= 0) {
+    body += String(negativeIndex);
+    negative = true;
+  } else {
+    body += last;
+  }
+  const value = BigInt(body);
+  return negative ? -value : value;
+}
+
+function formatCents(cents) {
+  const negative = cents < 0n;
+  const absolute = negative ? -cents : cents;
+  const units = absolute / 100n;
+  const fraction = (absolute % 100n).toString().padStart(2, "0");
+  const grouped = units.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (negative ? "-" : "") + grouped + "." + fraction;
+}
+
+function parseAmountToCents(text) {
+  const match = /^\s*(-?)(\d+)(?:\.(\d{1,2}))?\s*$/.exec(text);
+  if (!match) return null;
+  const sign = match[1] === "-" ? -1n : 1n;
+  const cents = BigInt(match[2]) * 100n + BigInt((match[3] || "0").padEnd(2, "0"));
+  return sign * cents;
+}
+
+// ---------------------------------------------------------------------------
+// Record layouts
+// ---------------------------------------------------------------------------
+function records(text) {
+  return text.split("\n").filter((line) => line.trim() !== "");
+}
+
+function parseCategoryBalance(line) {  // CVTRA01Y, 50 bytes
+  return {
+    accountId: line.slice(0, 11),
+    typeCode: line.slice(11, 13),
+    categoryCode: line.slice(13, 17),
+    balanceCents: parseSignedCents(line.slice(17, 28))
+  };
+}
+
+function parseAccount(line) {          // CVACT01Y, 300 bytes
+  return {
+    accountId: line.slice(0, 11),
+    activeStatus: line.slice(11, 12),
+    balanceCents: parseSignedCents(line.slice(12, 24)),
+    cycleCreditCents: parseSignedCents(line.slice(78, 90)),
+    cycleDebitCents: parseSignedCents(line.slice(90, 102)),
+    groupId: line.slice(112, 122)
+  };
+}
+
+function parseXref(line) {             // CVACT03Y, 50 bytes
+  return { cardNumber: line.slice(0, 16), accountId: line.slice(25, 36) };
+}
+
+function parseDisclosureGroup(line) {  // CVTRA02Y, 50 bytes
+  return {
+    groupId: line.slice(0, 10),
+    typeCode: line.slice(10, 12),
+    categoryCode: line.slice(12, 16),
+    rateHundredths: parseSignedCents(line.slice(16, 22))
+  };
+}
+
+const DEFAULT_GROUP_ID = "DEFAULT";
+
+function rateKey(groupId, typeCode, categoryCode) {
+  return groupId.padEnd(10, " ") + typeCode + categoryCode;
+}
+
+// ---------------------------------------------------------------------------
+// The job itself. Mirrors CBACT04C: the balance file is in account order, so a change of
+// account id settles the previous account.
+// ---------------------------------------------------------------------------
+function runInterestCalculation(input) {
+  const accounts = new Map(input.accounts.map((account) => [account.accountId, account]));
+  const cards = new Map();
+  input.xrefs.forEach((xref) => {
+    if (!cards.has(xref.accountId)) cards.set(xref.accountId, xref.cardNumber);
+  });
+  const rates = new Map();
+  input.rates.forEach((rate) => {
+    const key = rateKey(rate.groupId, rate.typeCode, rate.categoryCode);
+    if (!rates.has(key)) rates.set(key, rate);
+  });
+
+  const rows = [];
+  const warnings = [];
+  let current = null;
+
+  const settle = () => {
+    if (!current) return;
+    current.balanceAfterCents = current.balanceBeforeCents + current.interestCents;
+    rows.push(current);
+    current = null;
+  };
+
+  for (const balance of input.balances) {
+    if (!current || current.accountId !== balance.accountId) {
+      settle();
+      const account = accounts.get(balance.accountId);
+      if (!account) {
+        warnings.push("ACCOUNT NOT FOUND: " + balance.accountId + " (the COBOL abends here)");
+        continue;
+      }
+      current = {
+        accountId: account.accountId,
+        activeStatus: account.activeStatus,
+        groupId: account.groupId.trim(),
+        cardNumber: cards.get(account.accountId) || "",
+        balanceBeforeCents: account.balanceCents,
+        cycleCreditCents: account.cycleCreditCents,
+        cycleDebitCents: account.cycleDebitCents,
+        interestCents: 0n,
+        categories: [],
+        usedDefaultGroup: false
+      };
+    }
+    if (!current) continue;
+
+    let rate = rates.get(rateKey(current.groupId, balance.typeCode, balance.categoryCode));
+    let usedDefault = false;
+    if (!rate) {
+      rate = rates.get(rateKey(DEFAULT_GROUP_ID, balance.typeCode, balance.categoryCode));
+      usedDefault = true;
+    }
+    if (!rate) {
+      warnings.push("No rate for " + balance.typeCode + "/" + balance.categoryCode
+        + " in group " + (current.groupId || "(blank)") + " or DEFAULT (the COBOL abends here)");
+      continue;
+    }
+    if (usedDefault) current.usedDefaultGroup = true;
+
+    // balance * annualRate / 1200, truncated to cents: cents * hundredths / 120000.
+    let interestCents = 0n;
+    if (rate.rateHundredths !== 0n) {
+      const product = balance.balanceCents * rate.rateHundredths;
+      const negative = product < 0n;
+      const magnitude = (negative ? -product : product) / 120000n;   // BigInt division truncates
+      interestCents = negative ? -magnitude : magnitude;
+      current.interestCents += interestCents;
+    }
+    current.categories.push({
+      typeCode: balance.typeCode,
+      categoryCode: balance.categoryCode,
+      balanceCents: balance.balanceCents,
+      rateHundredths: rate.rateHundredths,
+      interestCents: interestCents,
+      charged: rate.rateHundredths !== 0n
+    });
+  }
+  settle();
+  return { rows, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function summaryCard(value, label, valueClass) {
+  const card = element("div", "card");
+  card.appendChild(element("div", "value" + (valueClass ? " " + valueClass : ""), value));
+  card.appendChild(element("div", "label", label));
+  return card;
+}
+
+function ratesLabel(row) {
+  const distinct = [];
+  row.categories.forEach((category) => {
+    const label = (Number(category.rateHundredths) / 100).toFixed(2) + "%";
+    if (!distinct.includes(label)) distinct.push(label);
+  });
+  return distinct.length ? distinct.join(", ") : "-";
+}
+
+function render(result) {
+  const output = document.getElementById("output");
+  output.textContent = "";
+
+  if (result.warnings.length) {
+    const box = element("div", "error");
+    box.appendChild(element("strong", null, "Warnings"));
+    const list = element("ul");
+    Array.from(new Set(result.warnings)).forEach((warning) => list.appendChild(element("li", null, warning)));
+    box.appendChild(list);
+    output.appendChild(box);
+  }
+
+  const totalBefore = result.rows.reduce((sum, row) => sum + row.balanceBeforeCents, 0n);
+  const totalInterest = result.rows.reduce((sum, row) => sum + row.interestCents, 0n);
+  const totalAfter = result.rows.reduce((sum, row) => sum + row.balanceAfterCents, 0n);
+  const transactions = result.rows.reduce(
+    (count, row) => count + row.categories.filter((category) => category.charged).length, 0);
+
+  const cards = element("div", "cards");
+  cards.appendChild(summaryCard(String(result.rows.length), "Accounts processed"));
+  cards.appendChild(summaryCard(String(transactions), "Interest transactions"));
+  cards.appendChild(summaryCard(formatCents(totalInterest), "Total interest charged", "interest"));
+  cards.appendChild(summaryCard(formatCents(totalBefore), "Portfolio balance before"));
+  cards.appendChild(summaryCard(formatCents(totalAfter), "Portfolio balance after"));
+  output.appendChild(cards);
+
+  output.appendChild(element("h2", null, "Per account"));
+
+  const table = element("table");
+  const caption = element("caption", null,
+    "One row per account. Rate is the annual rate from the disclosure group; interest is one month of it, "
+    + "truncated to cents, exactly as the COBOL COMPUTE does.");
+  table.appendChild(caption);
+
+  const head = element("thead");
+  const headRow = element("tr");
+  [
+    ["Account", ""], ["Card", ""], ["Group", ""], ["Cat.", "num"],
+    ["Balance before", "num"], ["Rate", "num"], ["Interest", "num"], ["Balance after", "num"]
+  ].forEach(([label, className]) => {
+    const cell = element("th", className, label);
+    headRow.appendChild(cell);
+  });
+  head.appendChild(headRow);
+  table.appendChild(head);
+
+  const body = element("tbody");
+  result.rows.forEach((row) => {
+    const tableRow = element("tr");
+    tableRow.appendChild(element("td", null, row.accountId));
+    tableRow.appendChild(element("td", null, row.cardNumber));
+    const group = element("td");
+    group.appendChild(element("span", "tag",
+      row.usedDefaultGroup ? "DEFAULT" : (row.groupId || "(blank)")));
+    tableRow.appendChild(group);
+    tableRow.appendChild(element("td", "num", String(row.categories.length)));
+    tableRow.appendChild(element("td", "num", formatCents(row.balanceBeforeCents)));
+    tableRow.appendChild(element("td", "num", ratesLabel(row)));
+    tableRow.appendChild(element("td", "num interest", formatCents(row.interestCents)));
+    tableRow.appendChild(element("td", "num", formatCents(row.balanceAfterCents)));
+    body.appendChild(tableRow);
+  });
+  table.appendChild(body);
+
+  const foot = element("tfoot");
+  const footRow = element("tr");
+  footRow.appendChild(element("td", null, "Total"));
+  footRow.appendChild(element("td"));
+  footRow.appendChild(element("td"));
+  footRow.appendChild(element("td", "num", String(
+    result.rows.reduce((count, row) => count + row.categories.length, 0))));
+  footRow.appendChild(element("td", "num", formatCents(totalBefore)));
+  footRow.appendChild(element("td"));
+  footRow.appendChild(element("td", "num interest", formatCents(totalInterest)));
+  footRow.appendChild(element("td", "num", formatCents(totalAfter)));
+  foot.appendChild(footRow);
+  table.appendChild(foot);
+
+  output.appendChild(table);
+}
+
+// ---------------------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------------------
+const demoBalanceInput = document.getElementById("demo-balance");
+const useShippedInput = document.getElementById("use-shipped");
+const dataNote = document.getElementById("data-note");
+
+function refresh() {
+  const data = window.CARDDEMO_DATA;
+  if (!data) {
+    document.getElementById("output").appendChild(element("div", "error",
+      "web/data.js did not load. Run scripts/build-web-data.sh and keep it next to this page."));
+    return;
+  }
+
+  const balances = records(data.tcatbal).map(parseCategoryBalance);
+  const useShipped = useShippedInput.checked;
+  let note;
+  if (useShipped) {
+    note = "Showing the shipped balances from app/data/ASCII/tcatbal.txt. Every one of them is 0.00, "
+      + "so no interest is due - untick the box to charge interest on a balance of your choosing.";
+    demoBalanceInput.disabled = true;
+  } else {
+    demoBalanceInput.disabled = false;
+    const overrideCents = parseAmountToCents(demoBalanceInput.value);
+    if (overrideCents === null) {
+      dataNote.textContent = "Enter an amount like 10000.00 (up to two decimals).";
+      return;
+    }
+    balances.forEach((balance) => { balance.balanceCents = overrideCents; });
+    note = "Every category balance has been set to " + formatCents(overrideCents)
+      + " so there is interest to see; the shipped balances are all 0.00.";
+  }
+  dataNote.textContent = note;
+
+  render(runInterestCalculation({
+    balances: balances,
+    accounts: records(data.acctdata).map(parseAccount),
+    xrefs: records(data.cardxref).map(parseXref),
+    rates: records(data.discgrp).map(parseDisclosureGroup)
+  }));
+}
+
+demoBalanceInput.addEventListener("input", refresh);
+useShippedInput.addEventListener("change", refresh);
+refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+name: Java CBACT04C
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build and test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+          cache: maven
+
+      - name: Build and run tests
+        run: mvn -B verify
+        working-directory: java/cbact04c
+
+      - name: Run the end-to-end demo against app/data/ASCII
+        run: ./scripts/run-java-demo.sh
+
+      - name: Check web/data.js matches app/data/ASCII
+        run: |
+          ./scripts/build-web-data.sh
+          git diff --exit-code -- web/data.js \
+            || { echo "web/data.js is stale - run scripts/build-web-data.sh and commit it"; exit 1; }
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-jdk${{ matrix.java }}
+          path: java/cbact04c/target/surefire-reports/
+          if-no-files-found: ignore
+
+  parity:
+    name: COBOL/Java differential test
+    # Pinned to 22.04: its gnucobol3 package is built with a BDB indexed-file handler,
+    # which the VSAM KSDS inputs need. The gnucobol4 package has it disabled.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: maven
+
+      - name: Install GnuCOBOL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnucobol3
+          cobc --version | head -1
+          cobc --info | grep -i "indexed file handler"
+
+      - name: Build the Java port
+        run: mvn -B -q package -DskipTests
+        working-directory: java/cbact04c
+
+      - name: Run the real COBOL and diff it against the Java
+        run: ./scripts/cobol-parity/run-parity.sh
+
+      - name: Upload parity artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobol-parity-output
+          path: target/cobol-parity/
+          if-no-files-found: ignore
