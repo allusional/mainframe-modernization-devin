@@ -317,6 +317,7 @@ Individual pieces, if you want them separately:
 | --- | --- |
 | `(cd java && mvn -B test)` | the unit tests for both ports |
 | `./scripts/cobol-parity/run-posting-parity.sh` | COBOL vs Java, shipped data and adversarial edge cases |
+| `./scripts/cobol-parity/run-posting-fuzz.sh --seeds 200` | COBOL vs Java on 200 random feeds drawn from the record grammar |
 | `python3 scripts/report/build-posting-report.py target/cbtrn02c-parity/shipped out.html` | rebuild the report from an existing run |
 
 Both are also run on every pull request by the `Java CBTRN02C` GitHub Actions workflow.

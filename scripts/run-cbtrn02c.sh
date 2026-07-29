@@ -23,7 +23,7 @@ SKIP_INSTALL=false
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 
-step "1/5  Toolchain"
+step "1/6  Toolchain"
 missing=()
 command -v java  >/dev/null 2>&1 || missing+=("openjdk-17-jdk")
 command -v mvn   >/dev/null 2>&1 || missing+=("maven")
@@ -56,23 +56,28 @@ java -version 2>&1 | head -1
 mvn -v | head -1
 cobc --version | head -1
 
-step "2/5  Building the Java port"
+step "2/6  Building the Java port"
 (cd java && mvn -B -q package -DskipTests)
 
-step "3/5  Unit tests"
+step "3/6  Unit tests"
 (cd java && mvn -B test)
 
-step "4/5  Differential test against the real COBOL"
+step "4/6  Differential test against the real COBOL"
 ./scripts/cobol-parity/run-posting-parity.sh
 
-step "5/5  Static report"
+# Ten seeds keeps this under a minute. COBOL-PARITY.md records a 200 seed soak, and
+# run-posting-fuzz.sh --seeds 200 reproduces it.
+step "5/6  Fuzzing the two implementations against each other"
+./scripts/cobol-parity/run-posting-fuzz.sh --seeds 10
+
+step "6/6  Static report"
 python3 scripts/report/build-posting-report.py \
     "$REPO_ROOT/target/cbtrn02c-parity/shipped" "$REPORT"
 
 step "Done"
 cat <<EOF
-The Java port, the unit tests and a byte-for-byte comparison against the unmodified COBOL all
-ran. Open the report - it is a single file, no server needed:
+The Java port, the unit tests, a byte-for-byte comparison against the unmodified COBOL and ten
+random feeds through both sides all ran. Open the report - it is a single file, no server needed:
 
   file://$REPORT
 
