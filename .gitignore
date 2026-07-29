@@ -7,3 +7,4 @@ batch-app/markers/*
 /target/
 .DS_Store
 **/.DS_Store
+java/*/target/
