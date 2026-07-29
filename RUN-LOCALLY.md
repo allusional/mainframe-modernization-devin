@@ -194,7 +194,31 @@ original COBOL. See [`java/cbact04c/README.md`](java/cbact04c/README.md) for the
 
 ---
 
-## 5. Continuous integration
+## 5. The browser version (nothing to install at all)
+
+For showing the calculation on a screen there is a standalone page at
+[`web/index.html`](web/index.html). Open it directly — no server, no build, no toolchain:
+
+```bash
+open web/index.html          # macOS; on Linux use: xdg-open web/index.html
+```
+
+It runs the same logic in JavaScript over the same sample data and renders one row per
+account: balance before, the interest rate applied, the interest charged, and the balance
+after. The shipped balances are all `0.00`, so by default the page charges a balance of
+`10,000.00` per category to make the arithmetic visible; tick the checkbox to see the raw
+shipped figures instead.
+
+The data is embedded in `web/data.js` because browsers refuse to read sibling files over
+`file://`. Regenerate it after changing anything in `app/data/ASCII`:
+
+```bash
+./scripts/build-web-data.sh
+```
+
+---
+
+## 6. Continuous integration
 
 `.github/workflows/java-cbact04c.yml` runs the same build, the same tests, and the same demo
 script on every pull request and on every push to `main`, against both JDK 17 and JDK 21. If
