@@ -5,8 +5,8 @@ import com.carddemo.interest.cobol.Zoned;
 import java.math.BigDecimal;
 
 /**
- * Copybook CVACT01Y - account master, 300 bytes. Mutable, because CBACT04C rewrites the
- * balance and the cycle to date totals in place.
+ * Copybook CVACT01Y - account master, 300 bytes. Mutable, because both CBACT04C and
+ * CBTRN02C rewrite the balance and the cycle to date totals in place.
  */
 public final class AccountRecord {
 
@@ -95,12 +95,33 @@ public final class AccountRecord {
         return currentBalance;
     }
 
+    public BigDecimal creditLimit() {
+        return creditLimit;
+    }
+
+    /** ACCT-EXPIRAION-DATE, PIC X(10). The copybook's spelling, kept deliberately. */
+    public String expirationDate() {
+        return expirationDate;
+    }
+
     public BigDecimal currentCycleCredit() {
         return currentCycleCredit;
     }
 
     public BigDecimal currentCycleDebit() {
         return currentCycleDebit;
+    }
+
+    public void addToCurrentBalance(BigDecimal amount) {
+        currentBalance = currentBalance.add(amount);
+    }
+
+    public void addToCurrentCycleCredit(BigDecimal amount) {
+        currentCycleCredit = currentCycleCredit.add(amount);
+    }
+
+    public void addToCurrentCycleDebit(BigDecimal amount) {
+        currentCycleDebit = currentCycleDebit.add(amount);
     }
 
     /** 1050-UPDATE-ACCOUNT: post the cycle's interest and close the cycle out. */
