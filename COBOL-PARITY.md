@@ -107,3 +107,116 @@ for the `gnucobol3` package, and uploads the compared files as the `cobol-parity
   sides over them is the natural next step.
 - `SYSOUT` is not compared. The COBOL `DISPLAY`s each input record; the Java prints a summary. Only
   the data files are held to byte equality.
+
+---
+
+# CBTRN02C: the nightly posting job
+
+Same idea, four output files instead of two, and this time with adversarial inputs as well as the
+shipped data.
+
+```bash
+sudo apt-get install -y gnucobol3
+./scripts/cobol-parity/run-posting-parity.sh
+```
+
+## Result
+
+```
+=== Scenario: the 300 shipped records in app/data/ASCII
+  COBOL rc=4   Java rc=4
+  COBOL TRANSACTIONS PROCESSED :000000300
+  COBOL TRANSACTIONS REJECTED  :000000038
+  Java  TRANSACTIONS PROCESSED :000000300
+  Java  TRANSACTIONS REJECTED  :000000038
+  TRANFILE: 262 records identical (TRAN-PROC-TS masked, format verified on both sides)
+  DALYREJS: 38 records identical
+  ACCTFILE: 50 records identical
+  TCATBALF: 100 records identical
+  reject reasons (COBOL): 0102 x38
+
+=== Scenario: adversarial feed: every reject reason and every boundary
+  COBOL rc=4   Java rc=4
+  COBOL TRANSACTIONS PROCESSED :000000014
+  COBOL TRANSACTIONS REJECTED  :000000006
+  Java  TRANSACTIONS PROCESSED :000000014
+  Java  TRANSACTIONS REJECTED  :000000006
+  TRANFILE: 8 records identical (TRAN-PROC-TS masked, format verified on both sides)
+  DALYREJS: 6 records identical
+  ACCTFILE: 50 records identical
+  TCATBALF: 51 records identical
+  reject reasons (COBOL): 0100 x1, 0101 x1, 0102 x2, 0103 x2
+```
+
+**The real numbers for the shipped data**, from the unmodified COBOL rather than from a reading of
+it: 300 transactions read, **262 posted, 38 rejected, every one of them reason `0102`
+(`OVERLIMIT TRANSACTION`), return code 4**. The account master keeps its 50 records; the category
+balance file grows from 50 buckets to 100, because none of the 50 accounts had a type-`03` bucket
+before tonight.
+
+Every one of the four output files matches byte for byte on both sides, and both programs return the
+same return code. The Java runs with `--bug-for-bug`, which is the mode that claims to be CBTRN02C;
+its default mode corrects the defects and is expected to differ. The harness prints that difference
+too, for contrast: on the adversarial feed the corrected mode rejects 5 instead of 6.
+
+## The adversarial feed
+
+The shipped data only ever trips one reject reason, so on its own it proves very little about the
+other rules. `make-posting-adversarial.py` reads the sample files and writes modified **copies**
+(nothing in `app/` is touched) that put each boundary on its own account — necessary, because posting
+a transaction changes the very cycle totals the next credit-limit test would measure against.
+
+| Case | Input | COBOL and Java both |
+| --- | --- | --- |
+| `0100` | a card number in no cross-reference record | reject, `INVALID CARD NUMBER FOUND` |
+| `0101` | a cross-reference row pointing at account `99999999999` | reject, `ACCOUNT RECORD NOT FOUND` |
+| `0102` boundary | 600.00 of headroom: `599.99` / `600.00` / `600.01` | post, post, reject |
+| `0103` boundary | expiry `2024-06-15`: dated the 14th / 15th / 16th | post, post, reject |
+| D8 | over the limit *and* after expiry at once | reject as `0103`, the expiry check overwriting the over-limit code |
+| D4 | 600.00 against a cycle of 900.00 charged and 500.00 refunded | reject as `0102` |
+| R14 | a type/category pair with no existing bucket | create the bucket, 50 → 51 records |
+| R17 | a `-25.00` refund and a `0.00` transaction | refund to cycle debit, zero to cycle *credit* |
+
+D4 and D8 are the two the Java corrects by default, and the run shows the COBOL and the emulation
+agreeing on the original behaviour while the corrected mode gives a different, defensible answer.
+
+## What had to be settled to get a clean diff
+
+**`DALYTRAN` is `ORGANIZATION SEQUENTIAL`, not line sequential** (`app/cbl/CBTRN02C.cbl:29-32`) — the
+mainframe `RECFM=F` layout, 350-byte records butted together with no line endings. The harness builds
+that from the text file before running the COBOL. `DALYREJS` comes back out the same way, 430 bytes
+per record with no separators, which `compare-posting.py` chunks rather than splits on newlines.
+
+**The 22-byte `FILLER` of a newly created category-balance bucket is not initialised.**
+`2700-A-CREATE-TCATBAL-REC` does `INITIALIZE TRAN-CAT-BAL-RECORD`, and `INITIALIZE` leaves `FILLER`
+alone by definition, so those bytes are whatever the record area last held — in practice the filler
+of the last bucket that was read successfully. The first Java run wrote spaces there and 50 of the
+100 records differed. The port now carries the previous record's filler forward, which is what the
+COBOL is actually doing, and the file matches. **On z/OS those bytes are equally undefined**; they
+happen to be zeros here because every bucket in `app/data/ASCII/tcatbal.txt` has zeros in its filler.
+Nothing reads the field, so nothing depends on it — but a byte-for-byte comparison does, and this is
+the sort of thing only a differential run finds.
+
+**Only `TRAN-PROC-TS` is masked** (offset 305-330 of a posted transaction), because each side stamps
+it from its own clock. It is not ignored: both sides must produce a well-formed
+`YYYY-MM-DD-HH.MM.SS.mmm000`, checked separately in `compare-posting.py`. `TRAN-ORIG-TS` is *not*
+masked — it is copied from the input record and must match exactly, and it does.
+
+## What this does not prove
+
+Everything in "Honest limits" above applies unchanged, and in particular **GnuCOBOL is not IBM
+Enterprise COBOL**. Specific to this program:
+
+- **Nothing here says what happens when a file operation fails.** Findings D1 (an account rewrite
+  that returns `INVALID KEY`) and D2 (a duplicate `TRAN-ID`) are the two most serious things in
+  `CBTRN02C-EXPLAINED.md`, and neither can be provoked through a normal run of either side. They are
+  covered by unit tests against a stubbed file, not by this harness. Confirming what z/OS actually
+  returns in those cases needs a mainframe.
+- **The `OPEN OUTPUT` on the transaction master (R22) behaves differently here.** GnuCOBOL happily
+  creates the indexed file; on z/OS the behaviour depends on how the KSDS was defined and on
+  `TRANBKP` having emptied it first. The harness cannot test the interaction with the preceding job.
+- **`SYSOUT` is not compared**, though both sides emit the same `TRANSACTIONS PROCESSED` and
+  `TRANSACTIONS REJECTED` lines and the run prints both for inspection.
+- **Storage-layout accidents may not carry over.** The `FILLER` finding above is a real example: the
+  bytes matched because GnuCOBOL happens to keep the record area between operations the way the
+  COBOL assumes. IBM's runtime is under no obligation to agree.

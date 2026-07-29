@@ -34,12 +34,25 @@ public record TranCatBalRecord(long accountId, String typeCode, String categoryC
         return new TranCatBalRecord(accountId, typeCode, categoryCode, newBalance, raw);
     }
 
+    /** The trailing FILLER PIC X(22), which no program gives a meaning to. */
+    public String filler() {
+        return raw == null ? " ".repeat(22) : raw.substring(28, LENGTH);
+    }
+
     /**
-     * A bucket that does not exist yet, as CBTRN02C's 2700-A-CREATE-TCATBAL-REC builds it:
-     * INITIALIZE blanks the trailing FILLER and zeroes the balance.
+     * A bucket that does not exist yet, as CBTRN02C's 2700-A-CREATE-TCATBAL-REC builds it.
+     *
+     * <p>{@code INITIALIZE TRAN-CAT-BAL-RECORD} zeroes the balance but, per the standard,
+     * leaves FILLER alone - so the 22 trailing bytes of a brand new bucket are whatever was
+     * last in the record area. The caller passes that in rather than this guessing at it.
      */
+    public static TranCatBalRecord initialize(long accountId, String typeCode, String categoryCode, String filler) {
+        return new TranCatBalRecord(accountId, typeCode, categoryCode, BigDecimal.ZERO.setScale(2),
+                " ".repeat(28) + Zoned.alphanumeric(filler, 22));
+    }
+
     public static TranCatBalRecord initialize(long accountId, String typeCode, String categoryCode) {
-        return new TranCatBalRecord(accountId, typeCode, categoryCode, BigDecimal.ZERO.setScale(2), null);
+        return initialize(accountId, typeCode, categoryCode, " ".repeat(22));
     }
 
     public String toRecord() {
@@ -47,7 +60,7 @@ public record TranCatBalRecord(long accountId, String typeCode, String categoryC
                 + Zoned.alphanumeric(typeCode, 2)
                 + Zoned.alphanumeric(categoryCode, 4)
                 + Zoned.formatSigned(balance, 11, 2)
-                + (raw == null ? " ".repeat(22) : Zoned.alphanumeric(raw.substring(28), 22));
+                + Zoned.alphanumeric(filler(), 22);
         if (record.length() != LENGTH) {
             throw new IllegalStateException("Category balance record is " + record.length()
                     + " bytes, expected " + LENGTH);
