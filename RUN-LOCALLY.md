@@ -218,11 +218,29 @@ The data is embedded in `web/data.js` because browsers refuse to read sibling fi
 
 ---
 
-## 6. Continuous integration
+## 6. Checking the Java against the real COBOL
+
+The tests prove the Java does what we *read* the COBOL to do. To prove it does what the COBOL
+*does*, there is a differential harness that compiles `app/cbl/CBACT04C.cbl` unmodified with
+GnuCOBOL, runs both programs over the same inputs, and diffs the output files byte for byte:
+
+```bash
+sudo apt-get install -y gnucobol3      # macOS: brew install gnu-cobol
+./scripts/cobol-parity/run-parity.sh
+```
+
+All 50 transaction records match byte for byte, and the only account that differs is the last
+one — the defect documented in `CBACT04C-EXPLAINED.md`, which the port fixes. Details, caveats
+and the GnuCOBOL flags that matter are in [`COBOL-PARITY.md`](COBOL-PARITY.md).
+
+---
+
+## 7. Continuous integration
 
 `.github/workflows/java-cbact04c.yml` runs the same build, the same tests, and the same demo
-script on every pull request and on every push to `main`, against both JDK 17 and JDK 21. If
-`./scripts/run-java-demo.sh` passes locally, CI should pass too.
+script on every pull request and on every push to `main`, against both JDK 17 and JDK 21, plus
+the COBOL/Java differential test above. If `./scripts/run-java-demo.sh` passes locally, CI
+should pass too.
 
 ---
 
