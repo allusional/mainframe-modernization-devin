@@ -10,6 +10,9 @@
 #   B. a generated adversarial feed that trips every reject reason and sits exactly on every
 #      boundary the rule catalogue identifies, one unit either side
 #
+# Both scenarios are fixed, so they can only confirm behaviours somebody thought of. For random
+# feeds drawn from the record grammar, see run-posting-fuzz.sh.
+#
 # In both, the Java runs with --bug-for-bug, because that is the mode that claims to be
 # CBTRN02C. Its default mode deliberately behaves differently; Phase 3's JUnit tests cover
 # that, and scenario B prints the difference for comparison.
@@ -28,35 +31,16 @@ OUT="$REPO_ROOT/target/cbtrn02c-parity"
 BIN="$OUT/bin"
 JAR="$REPO_ROOT/java/cbtrn02c/target/cbtrn02c-1.0.0-SNAPSHOT.jar"
 
-say() { printf '\n=== %s\n' "$1"; }
-die() { printf 'ERROR: %s\n' "$1" >&2; exit 1; }
+# shellcheck source=scripts/cobol-parity/posting-scenario.sh
+source "$SRC/posting-scenario.sh"
 
 say "Checking the toolchain"
-command -v cobc >/dev/null 2>&1 || die "cobc (GnuCOBOL) not found: sudo apt-get install -y gnucobol3"
-command -v java >/dev/null 2>&1 || die "java not found. See RUN-LOCALLY.md"
-cobc --version | head -1
-if cobc --info 2>/dev/null | grep -q "indexed file handler *: *disabled"; then
-    die "This GnuCOBOL build has no indexed (ISAM) handler, so the VSAM KSDS inputs cannot be
-       created. Ubuntu's gnucobol4 package is built without it; use gnucobol3 instead:
-       sudo apt-get remove -y gnucobol4 && sudo apt-get install -y gnucobol3"
-fi
-
-if [ ! -f "$JAR" ]; then
-    say "Building the Java port"
-    (cd "$REPO_ROOT/java" && mvn -B -q package -DskipTests)
-fi
+posting_check_toolchain
 
 rm -rf "$OUT"
-mkdir -p "$BIN"
 
-# -fsign=EBCDIC makes GnuCOBOL store the sign of a DISPLAY numeric as an overpunch in the
-# last byte ('{' = +0 ... 'I' = +9, '}' = -0 ... 'R' = -9), which is what the EBCDIC-derived
-# sample data uses. Without it every signed field GnuCOBOL writes differs.
 say "Compiling app/cbl/CBTRN02C.cbl (unmodified) and the harness with GnuCOBOL"
-cobc -x -fsign=EBCDIC -I "$REPO_ROOT/app/cpy" -o "$BIN/CBTRN02C" "$REPO_ROOT/app/cbl/CBTRN02C.cbl"
-for prog in LOADPOST UNLDPOST; do
-    cobc -x -fsign=EBCDIC -o "$BIN/$prog" "$SRC/$prog.cbl"
-done
+posting_compile "$BIN"
 echo "Compiled with no errors."
 
 FAILURES=0
@@ -64,50 +48,9 @@ FAILURES=0
 run_scenario() {
     local dir="$1" label="$2" dalytran="$3" cardxref="$4" acctdata="$5" tcatbal="$6"
 
-    mkdir -p "$dir"
     say "Scenario: $label"
-
-    # DALYTRAN is ORGANIZATION SEQUENTIAL (RECFM=F), not line sequential: 350 byte records
-    # butted up against each other with no line endings. Build that from the text file.
-    python3 -c "
-import sys
-from pathlib import Path
-src = Path(sys.argv[1]).read_text('latin-1').splitlines()
-Path(sys.argv[2]).write_text(''.join(line.ljust(350)[:350] for line in src), 'latin-1')
-print(f'DALYTRAN: {len(src)} records')
-" "$dalytran" "$dir/DALYTRAN"
-
-    # -- COBOL side: build the indexed files IDCAMS-style, run the POSTTRAN step, unload.
-    # TRANFILE is deliberately not created here: CBTRN02C opens it OUTPUT (rule R22).
-    DD_XREFTXT="$cardxref" DD_ACCTTXT="$acctdata" DD_TCATBALT="$tcatbal" \
-    DD_XREFFILE="$dir/XREFFILE" DD_ACCTFILE="$dir/ACCTFILE" DD_TCATBALF="$dir/TCATBALF" \
-        "$BIN/LOADPOST" > "$dir/load.log"
-
-    set +e
-    DD_DALYTRAN="$dir/DALYTRAN" DD_XREFFILE="$dir/XREFFILE" DD_ACCTFILE="$dir/ACCTFILE" \
-    DD_TCATBALF="$dir/TCATBALF" DD_TRANFILE="$dir/TRANFILE" DD_DALYREJS="$dir/rejs.cobol" \
-        "$BIN/CBTRN02C" > "$dir/sysout.cobol" 2>&1
-    local cobol_rc=$?
-    set -e
-
-    DD_ACCTFILE="$dir/ACCTFILE" DD_TCATBALF="$dir/TCATBALF" DD_TRANFILE="$dir/TRANFILE" \
-    DD_ACCTOUT="$dir/acct.cobol" DD_TCATBALOUT="$dir/tcat.cobol" DD_TRANOUT="$dir/tran.cobol" \
-        "$BIN/UNLDPOST" >> "$dir/load.log"
-
-    # -- Java side: identical inputs, its own copies of the two files opened I-O.
-    cp "$acctdata" "$dir/acct.java"
-    cp "$tcatbal" "$dir/tcat.java"
-    set +e
-    java -jar "$JAR" \
-        --dalytran "$dalytran" \
-        --xreffile "$cardxref" \
-        --acctfile "$dir/acct.java" \
-        --tcatbalf "$dir/tcat.java" \
-        --tranfile "$dir/tran.java" \
-        --dalyrejs "$dir/rejs.java" \
-        --bug-for-bug > "$dir/sysout.java" 2>&1
-    local java_rc=$?
-    set -e
+    posting_run_scenario "$BIN" "$dir" "$dalytran" "$cardxref" "$acctdata" "$tcatbal"
+    local cobol_rc="$POSTING_COBOL_RC" java_rc="$POSTING_JAVA_RC"
 
     printf '  COBOL rc=%s   Java rc=%s\n' "$cobol_rc" "$java_rc"
     grep -E 'TRANSACTIONS (PROCESSED|REJECTED)' "$dir/sysout.cobol" | sed 's/^/  COBOL /'

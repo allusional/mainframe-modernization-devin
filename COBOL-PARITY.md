@@ -180,6 +180,52 @@ a transaction changes the very cycle totals the next credit-limit test would mea
 D4 and D8 are the two the Java corrects by default, and the run shows the COBOL and the emulation
 agreeing on the original behaviour while the corrected mode gives a different, defensible answer.
 
+## Random feeds: fuzzing the two implementations against each other
+
+The shipped data is one point in the input space. The adversarial feed adds a dozen more, but they
+are points *I* chose, so between them they can only confirm behaviours somebody already thought of.
+
+`run-posting-fuzz.sh` generates feeds from the record grammar instead — random amounts on a log
+scale, a quarter of them refunds, random origin dates, random type and category pairs, cards that
+are known, cards in no cross-reference record and a cross-reference row pointing at a missing
+account, over accounts with random limits, balances, cycle totals and expiry dates — and diffs all
+four output files byte for byte on every one. Each feed comes from a seed, so a failing feed is
+reproducible exactly.
+
+```bash
+./scripts/cobol-parity/run-posting-fuzz.sh                       # seeds 1-25
+./scripts/cobol-parity/run-posting-fuzz.sh --seeds 200           # a longer soak
+./scripts/cobol-parity/run-posting-fuzz.sh --from 137 --seeds 1 --keep   # one seed, kept on disk
+```
+
+Result of the soak that is recorded here — 200 seeds, 400 transactions each:
+
+```
+  seed 1       400 processed    292 posted    108 rejected  rc=4  identical
+  ...
+=== Totals across 200 feeds
+  80000 transactions: 47974 posted, 32026 rejected
+  reject reasons:    3171 0100    3277 0101   12915 0102   12663 0103
+
+=== NO DIVERGENCE: the COBOL and the Java agreed byte for byte on every one of 200 random feeds
+```
+
+**80,000 transactions nobody designed, and not one byte of disagreement** across the posted
+transaction file, the reject file, the account master and the category balances. All four reject
+reasons fire in volume, so the run exercises every validation path, not just the one the shipped
+data happens to trip.
+
+Two things are deliberately not generated, and both are honest gaps rather than oversights:
+
+- **Duplicate transaction IDs.** A duplicate makes CBTRN02C abend where it stands (finding D2),
+  truncating the run and hiding everything after it. IDs are unique by construction.
+- **Values large enough to overflow a field.** Amounts stay inside ±100,000.00 and starting balances
+  inside ±999,999.99, so sums stay within the `S9(10)V99` the balances are held in. Overflow
+  semantics are a real question — and a good candidate for the next round — but a separate one from
+  whether the two implementations agree on the rules.
+
+CI runs 25 seeds on every pull request. A soak of 200 takes about fifteen minutes.
+
 ## What had to be settled to get a clean diff
 
 **`DALYTRAN` is `ORGANIZATION SEQUENTIAL`, not line sequential** (`app/cbl/CBTRN02C.cbl:29-32`) — the
@@ -215,6 +261,10 @@ Enterprise COBOL**. Specific to this program:
 - **The `OPEN OUTPUT` on the transaction master (R22) behaves differently here.** GnuCOBOL happily
   creates the indexed file; on z/OS the behaviour depends on how the KSDS was defined and on
   `TRANBKP` having emptied it first. The harness cannot test the interaction with the preceding job.
+- **A passing fuzz soak is evidence, not proof.** 200 seeds says the two agree on the 80,000 records
+  those seeds generated. It does not enumerate the input space, and it cannot tell you which
+  paragraphs of the COBOL were never entered — measuring that would need coverage instrumentation on
+  the GnuCOBOL build, which this harness does not do.
 - **`SYSOUT` is not compared**, though both sides emit the same `TRANSACTIONS PROCESSED` and
   `TRANSACTIONS REJECTED` lines and the run prints both for inspection.
 - **Storage-layout accidents may not carry over.** The `FILLER` finding above is a real example: the

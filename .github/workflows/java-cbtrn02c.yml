@@ -64,6 +64,11 @@ jobs:
       - name: Run the real COBOL and diff it against the Java
         run: ./scripts/cobol-parity/run-posting-parity.sh
 
+      # Random feeds from the record grammar, not inputs anybody chose. The seed range is
+      # fixed so a failure here is reproducible exactly, on this machine or any other.
+      - name: Fuzz the two implementations against each other
+        run: ./scripts/cobol-parity/run-posting-fuzz.sh --seeds 25
+
       - name: Build the static run report
         run: |
           python3 scripts/report/build-posting-report.py \
