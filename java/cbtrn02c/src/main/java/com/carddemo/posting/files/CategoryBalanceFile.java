@@ -17,6 +17,13 @@ public class CategoryBalanceFile {
 
     private final Map<String, TranCatBalRecord> buckets = new TreeMap<>();
 
+    /**
+     * The trailing FILLER of the last bucket read. 2700-A creates a new bucket with
+     * {@code INITIALIZE}, which leaves FILLER as whatever the record area last held, so a
+     * created bucket inherits it from the previous successful read.
+     */
+    private String lastReadFiller = " ".repeat(22);
+
     public CategoryBalanceFile(Iterable<TranCatBalRecord> records) {
         for (TranCatBalRecord record : records) {
             buckets.put(record.key(), record);
@@ -37,9 +44,13 @@ public class CategoryBalanceFile {
     public boolean addToBalance(long accountId, String typeCode, String categoryCode, BigDecimal amount) {
         TranCatBalRecord existing = buckets.get(key(accountId, typeCode, categoryCode));
         boolean created = existing == null;
-        TranCatBalRecord bucket = created
-                ? TranCatBalRecord.initialize(accountId, typeCode, categoryCode)
-                : existing;
+        TranCatBalRecord bucket;
+        if (created) {
+            bucket = TranCatBalRecord.initialize(accountId, typeCode, categoryCode, lastReadFiller);
+        } else {
+            bucket = existing;
+            lastReadFiller = existing.filler();
+        }
         buckets.put(bucket.key(), bucket.withBalance(bucket.balance().add(amount)));
         return created;
     }

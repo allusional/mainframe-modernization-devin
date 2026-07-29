@@ -548,6 +548,20 @@ therefore RC=4. That is a prediction from my own reading of the rules, not an ob
 Phase 4 of this exercise compiles the real COBOL with GnuCOBOL and reports what it actually
 does; treat those numbers, not these, as evidence.
 
+> **Resolved in Phase 4.** The unmodified COBOL, compiled with GnuCOBOL 3 and run over all 300
+> records, reports `TRANSACTIONS PROCESSED :000000300`, `TRANSACTIONS REJECTED :000000038` and
+> return code 4, with all 38 rejects carrying reason `0102`. The prediction was right, but it is
+> the run that is the evidence. See [COBOL-PARITY.md](COBOL-PARITY.md#cbtrn02c-the-nightly-posting-job).
+
+**U7 — The trailing `FILLER` of a newly created category-balance bucket (severity: low, found
+in Phase 4).** `2700-A-CREATE-TCATBAL-REC` (`app/cbl/CBTRN02C.cbl:503-510`) does
+`INITIALIZE TRAN-CAT-BAL-RECORD`, and `INITIALIZE` leaves `FILLER` untouched by definition, so
+the last 22 bytes of `CVTRA01Y` in a brand-new bucket are whatever the record area last held —
+in practice the filler of the previous bucket read. No program reads the field, so no customer
+is affected, but the bytes written to a production dataset are compiler- and runtime-dependent
+and I cannot say from the repository what IBM Enterprise COBOL puts there. Under GnuCOBOL they
+come out as zeros, matching the shipped data.
+
 ---
 
 ## 8. Quick reference
