@@ -4,7 +4,9 @@ Java port of the CardDemo batch COBOL program [`app/cbl/CBTRN02C.cbl`](../../app
 the daily transaction posting job (`app/jcl/POSTTRAN.jcl`), with a harness that proves record level
 parity against the original program running under GnuCOBOL.
 
-Parity results: [`PARITY_REPORT.md`](PARITY_REPORT.md).
+Parity results: [`PARITY_REPORT.md`](PARITY_REPORT.md), with a one page executive summary in
+[`docs/parity-dashboard.html`](docs/parity-dashboard.html) and a recording of the demo in
+[`docs/cbtrn02c-parity-demo.mp4`](docs/cbtrn02c-parity-demo.mp4).
 
 ## Layout
 

@@ -146,7 +146,9 @@ reproductions of quirks in the original program.
    clock on both sides. In production the port reads the wall clock, exactly like
    `Z-GET-DB2-FORMAT-TIMESTAMP`.
 
-## 5. Demo recording
+## 5. Demo recording and executive dashboard
 
-A screen recording of the COBOL run, the Java run and the side by side diff:
-[`docs/cbtrn02c-parity-demo.mp4`](docs/cbtrn02c-parity-demo.mp4).
+* Screen recording of the COBOL run, the Java run and the side by side diff:
+  [`docs/cbtrn02c-parity-demo.mp4`](docs/cbtrn02c-parity-demo.mp4).
+* One page, non technical summary of this report with the recording embedded:
+  [`docs/parity-dashboard.html`](docs/parity-dashboard.html) (self contained, open it in a browser).
