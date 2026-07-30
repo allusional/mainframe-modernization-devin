@@ -3,12 +3,13 @@ package com.carddemo.posttran;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
-/** Z-GET-DB2-FORMAT-TIMESTAMP: 26-char DB2 timestamp YYYY-MM-DD-HH.MM.SS.mmm0000. */
+/** Z-GET-DB2-FORMAT-TIMESTAMP: 26-char DB2 timestamp YYYY-MM-DD-HH.MM.SS.hh0000. */
 public class Db2Timestamp {
 
     private static final DateTimeFormatter FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd-HH.mm.ss.SS", java.util.Locale.ROOT);
+            DateTimeFormatter.ofPattern("yyyy-MM-dd-HH.mm.ss.SS", Locale.ROOT);
 
     private final Clock clock;
 
