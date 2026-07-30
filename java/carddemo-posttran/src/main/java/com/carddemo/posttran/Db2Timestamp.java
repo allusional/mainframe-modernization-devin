@@ -8,7 +8,7 @@ import java.time.format.DateTimeFormatter;
 public class Db2Timestamp {
 
     private static final DateTimeFormatter FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd-HH.mm.ss.SS");
+            DateTimeFormatter.ofPattern("yyyy-MM-dd-HH.mm.ss.SS", java.util.Locale.ROOT);
 
     private final Clock clock;
 
