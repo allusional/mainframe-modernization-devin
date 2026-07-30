@@ -296,6 +296,9 @@ def render(model, path):
     ok = model["identical"] and model["counters_match"]
     verdict_class = "ok" if ok else "bad"
     verdict_text = "IDENTICAL OUTPUT" if ok else "MISMATCH"
+    verdict_detail = ("Every record of all four output files matches, and so do the counters and the return code."
+                     if ok else
+                     "The two runs disagree; the differing records and counters are marked below.")
     out = []
     add = out.append
 
@@ -305,7 +308,7 @@ def render(model, path):
 <p class="sub">Both programs posted the same daily transaction file. Generated {esc(model['generated'])}
 &middot; {esc(model['cobc'])} &middot; {esc(model['java'])}</p>
 <div class="verdict"><span class="badge {verdict_class}">{verdict_text}</span>
-<div>Every record of all four output files matches, and so do the counters and the return code.
+<div>{verdict_detail}
 Excluded from the byte comparison: the wall-clock <code>TRAN-PROC-TS</code> and the meaningless
 <code>CVTRA01Y FILLER</code> (see notes).</div></div>
 <div class="flow"><span>app/data/ASCII <b>{model['inputs']['dailytran']} DALYTRAN</b></span>&rarr;

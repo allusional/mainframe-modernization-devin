@@ -37,3 +37,9 @@ z/OS COBOL produces; without it the amounts in the files would not round-trip.
 
 Everything else — 262 posted transactions, 50 account records, 100 category balances,
 38 rejects with their reason codes, the job log and the return code — is compared byte for byte.
+
+## Coverage of this run
+
+Every reject the bundled `dailytran.txt` produces is reason `0102 OVERLIMIT TRANSACTION`, so this
+run does not exercise `0100` (unknown card), `0101` (missing account) or `0103` (posted after account
+expiration); those branches are covered by `PostTransactionBatchTest` in the Java module.
