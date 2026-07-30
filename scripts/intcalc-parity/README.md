@@ -91,7 +91,8 @@ python3 - <<'EOF'
 from pathlib import Path
 p = Path('/tmp/negtest/seeded/java/tranfile.txt')
 lines = p.read_text().splitlines()
-lines[0] = lines[0][:140] + '9' + lines[0][141:]
+byte = lines[0][140]
+lines[0] = lines[0][:140] + ('8' if byte == '9' else '9') + lines[0][141:]
 p.write_text("\n".join(lines) + "\n")
 EOF
 python3 scripts/intcalc-parity/report.py \
