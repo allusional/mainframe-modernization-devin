@@ -1,6 +1,7 @@
 package com.carddemo.posttran;
 
 import java.math.BigDecimal;
+import java.util.function.Consumer;
 
 /** Java port of the CBTRN02C (POSTTRAN) PROCEDURE DIVISION. */
 public class PostTransactionBatch {
@@ -12,6 +13,7 @@ public class PostTransactionBatch {
     private final TransactionWriter transactionWriter;
     private final RejectWriter rejectWriter;
     private final Db2Timestamp timestamps;
+    private final Consumer<String> display;
 
     private long transactionCount;
     private long rejectCount;
@@ -23,6 +25,21 @@ public class PostTransactionBatch {
                                 TransactionWriter transactionWriter,
                                 RejectWriter rejectWriter,
                                 Db2Timestamp timestamps) {
+        this(dailyTransactions, xrefs, accounts, tranCatBalances, transactionWriter, rejectWriter, timestamps,
+                message -> {
+                });
+    }
+
+    /** @param display sink for the DISPLAY statements of the program. */
+    public PostTransactionBatch(DailyTransactionReader dailyTransactions,
+                                XrefRepository xrefs,
+                                AccountRepository accounts,
+                                TranCatBalanceRepository tranCatBalances,
+                                TransactionWriter transactionWriter,
+                                RejectWriter rejectWriter,
+                                Db2Timestamp timestamps,
+                                Consumer<String> display) {
+        this.display = display;
         this.dailyTransactions = dailyTransactions;
         this.xrefs = xrefs;
         this.accounts = accounts;
@@ -112,6 +129,7 @@ public class PostTransactionBatch {
         TranCatBalanceKey key = new TranCatBalanceKey(acctId, daily.getTypeCd(), daily.getCatCd());
         var existing = tranCatBalances.find(key);
         if (existing.isEmpty()) {
+            display.accept("TCATBAL record not found for key : " + displayKey(key) + ".. Creating.");
             tranCatBalances.create(new TranCatBalance(acctId, daily.getTypeCd(), daily.getCatCd(), daily.getAmt()));
         } else {
             TranCatBalance record = existing.get();
@@ -129,6 +147,11 @@ public class PostTransactionBatch {
             account.setCurrCycDebit(account.getCurrCycDebit().add(amount));
         }
         accounts.update(account);
+    }
+
+    /** FD-TRAN-CAT-KEY as DISPLAYed by 2700-UPDATE-TCATBAL: PIC 9(11) + PIC X(02) + PIC 9(04). */
+    private static String displayKey(TranCatBalanceKey key) {
+        return String.format("%011d%-2s%04d", key.acctId(), key.typeCd(), Integer.parseInt(key.catCd().trim()));
     }
 
     /** 2500-WRITE-REJECT-REC. */

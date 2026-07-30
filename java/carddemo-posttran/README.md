@@ -9,6 +9,20 @@ without a mainframe.
 mvn test
 ```
 
+## Running it against the sample datasets
+
+`com.carddemo.posttran.files` adds a flat-file I/O layer over the same repository interfaces, so the
+batch can be run against `app/data/ASCII` and produce the four output files as text:
+
+```
+mvn -q package
+java -cp target/classes com.carddemo.posttran.files.PostTranBatchRunner ../../app/data/ASCII /tmp/out
+```
+
+`scripts/posttran-parity/run-parity.sh` runs this alongside the unmodified COBOL program under
+GnuCOBOL and compares every record both write; see
+[scripts/posttran-parity/README.md](../../scripts/posttran-parity/README.md).
+
 ## COBOL paragraph → Java mapping
 
 | COBOL | Java |
