@@ -149,5 +149,13 @@ mvn verify                              # 30 tests, incl. the golden parity gate
 
 ## 9. Screen recording
 
-A screen recording of the parity run (COBOL baseline, Java run, byte comparison and the
-resulting `PARITY OK`) is linked from the pull request that introduces this module.
+Screen recording of the parity run — COBOL baseline, Java run on the same inputs, DISPLAY diff,
+byte-for-byte record comparison, the branch-coverage scenario and `mvn verify`:
+
+<https://app.devin.ai/attachments/b606cfdf-0acb-4e5f-bcb0-c0eb40995f3b/cbtrn02c-parity-edited.mp4>
+
+![Byte-for-byte comparison of the shipped dataset](https://app.devin.ai/attachments/26c098d5-3186-4bb5-b167-be1a7af56436/ss_df36d183.png)
+
+![Branch coverage scenario](https://app.devin.ai/attachments/66344f41-8adf-45f8-8894-65844ef5c562/ss_56befcf1.png)
+
+![mvn verify](https://app.devin.ai/attachments/8f0f39ed-d766-480f-af29-f35606023737/ss_3f5722ce.png)
